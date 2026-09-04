@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  ci:
+  matrix:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -35,3 +35,17 @@ jobs:
       - run: npm ci
       - run: npm install --no-save --ignore-scripts @earendil-works/pi-ai@${{ matrix.pi }} @earendil-works/pi-coding-agent@${{ matrix.pi }}
       - run: npm run ci
+
+  # One stable context for the branch ruleset to require: the matrix job names carry the pi
+  # version and change on every bump, so the ruleset points here instead.
+  ci:
+    needs: matrix
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: All matrix legs passed
+        env:
+          RESULT: ${{ needs.matrix.result }}
+        run: |
+          echo "matrix result: $RESULT"
+          [ "$RESULT" = "success" ]
