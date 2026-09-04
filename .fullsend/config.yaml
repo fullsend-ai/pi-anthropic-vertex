@@ -1,0 +1,55 @@
+# fullsend per-repo configuration
+# https://github.com/fullsend-ai/fullsend
+#
+# This file configures fullsend for per-repo installation mode.
+# See https://fullsend.sh/docs/guides/infrastructure/layered-config-reference
+#
+# The "runtime" key selects which agent runtime runs the agents, claude
+# (default when unset) or pi. For one run, the 'fullsend run --runtime'
+# flag wins, then FULLSEND_RUNTIME, then this file. See docs/runtimes.md.
+version: "1"
+# Per-agent settings live on the agents list below: triage and review run Grok on pi,
+# prioritize runs Gemini on pi, and code/fix/retro run Claude Code (Sonnet). The repo-wide
+# runtime key stays pi as the default for any agent that sets none. Change one agent with
+# `fullsend agent set <name> --fullsend-dir .fullsend --runtime ... --model ...`.
+runtime: pi
+roles:
+    - triage
+    - coder
+    - review
+    - fix
+    - retro
+    - prioritize
+agents:
+    - name: triage
+      model: xai-vertex/xai/grok-4.6
+    - name: review
+      model: xai-vertex/xai/grok-4.6
+    - name: prioritize
+      model: google-vertex/gemini-3.7-flash
+    - name: code
+      runtime: claude
+      model: sonnet
+    - name: fix
+      runtime: claude
+      model: sonnet
+    - name: retro
+      runtime: claude
+      model: sonnet
+# Claude Code resolves the bare `sonnet` alias to claude-sonnet-4-5 on Vertex; this project serves
+# claude-sonnet-5, so point the alias there for code/fix/retro (and for any pi run that uses it).
+models:
+    aliases:
+        sonnet: claude-sonnet-5
+allowed_remote_resources:
+    - https://raw.githubusercontent.com/fullsend-ai/fullsend/
+    - https://raw.githubusercontent.com/fullsend-ai/agents/
+create_issues:
+    allow_targets:
+        repos:
+            - fullsend-ai/pi-anthropic-vertex
+            - fullsend-ai/fullsend
+mint_url: https://mint.fullsend.sh
+inference:
+    project: it-gcp-konflux-dev-fullsend
+    wif_provider: projects/855403973659/locations/global/workloadIdentityPools/fullsend-inference/providers/gh-fullsend-ai-pi-anthropic-vert
