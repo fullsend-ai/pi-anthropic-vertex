@@ -198,6 +198,34 @@ export const VERTEX_COMPAT_KEYS = [
   "supportsToolReferences",
 ] as const satisfies readonly (keyof AnthropicMessagesCompat)[];
 
+/**
+ * The compat keys deliberately NOT forwarded (reasons above). Not constrained to
+ * `keyof AnthropicMessagesCompat` on purpose: `supportsMidConvoEffort` does not exist in pi 0.84.4,
+ * and the CI matrix compiles against both 0.84.4 and 0.85.0.
+ */
+export const VERTEX_COMPAT_DROPPED = [
+  "allowedFallbackModels",
+  "supportsMidConvoEffort",
+  "sendSessionAffinityHeaders",
+] as const;
+
+/**
+ * Exhaustiveness witness. `satisfies (keyof T)[]` only checks that every listed key exists — it
+ * says nothing about keys that are *not* listed, so a compat key pi adds in a future release would
+ * be silently dropped by the allowlist and no test would notice. This type is `never` exactly when
+ * every key of pi's `AnthropicMessagesCompat` appears in VERTEX_COMPAT_KEYS or
+ * VERTEX_COMPAT_DROPPED; otherwise the assignment below fails to compile and names the key.
+ *
+ * When `npm run lint` fails here after a pi bump: pi added a compat key. Decide whether Vertex
+ * accepts what it makes pi send (try it), then add the key to one of the two lists.
+ */
+type VertexCompatUnhandled = Exclude<
+  keyof AnthropicMessagesCompat,
+  (typeof VERTEX_COMPAT_KEYS)[number] | (typeof VERTEX_COMPAT_DROPPED)[number]
+>;
+const vertexCompatIsExhaustive: [VertexCompatUnhandled] extends [never] ? true : VertexCompatUnhandled = true;
+void vertexCompatIsExhaustive;
+
 function toVertexCompat(compat: AnthropicMessagesCompat | undefined): AnthropicMessagesCompat {
   const filtered: AnthropicMessagesCompat = {};
   if (!compat) return filtered;
