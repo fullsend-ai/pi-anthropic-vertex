@@ -1,0 +1,44 @@
+{
+  "name": "@fullsend-ai/pi-anthropic-vertex",
+  "version": "0.1.0",
+  "description": "Anthropic Claude models on Google Cloud Vertex AI for pi",
+  "type": "module",
+  "main": "src/index.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fullsend-ai/pi-anthropic-vertex.git"
+  },
+  "homepage": "https://github.com/fullsend-ai/pi-anthropic-vertex#readme",
+  "bugs": {
+    "url": "https://github.com/fullsend-ai/pi-anthropic-vertex/issues"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "scripts": {
+    "test": "node --test src/index.test.ts",
+    "lint": "tsc --noEmit",
+    "ci": "npm run lint && npm run test"
+  },
+  "dependencies": {
+    "google-auth-library": "9.15.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.3.0",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": ">=0.84.4",
+    "@earendil-works/pi-coding-agent": ">=0.84.4"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "anthropic",
+    "claude",
+    "vertex-ai"
+  ],
+  "license": "MIT"
+}
