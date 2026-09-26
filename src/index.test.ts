@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { calculateCost, createProvider } from "@earendil-works/pi-ai";
+import * as piAi from "@earendil-works/pi-ai";
+import { Type, calculateCost, createProvider } from "@earendil-works/pi-ai";
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/compat";
 import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 import type { Context, FetchFunction, Model, Provider, Usage } from "@earendil-works/pi-ai";
@@ -12,9 +13,13 @@ import {
   PROVIDER_ID,
   REGION_ENV_VARS,
   VERTEX_COMPAT_KEYS,
+  PARTNER_FEATURE_POLICY_CONSTRAINT,
+  STRUCTURED_OUTPUTS_FEATURE,
   anthropicVertexProviderConfig,
   authResultFrom,
   buildBaseUrl,
+  createVertexFetch,
+  isStructuredOutputsPolicyRefusal,
   registerAnthropicVertex,
   resolveProject,
   resolveRegion,
@@ -22,6 +27,7 @@ import {
   toVertexModel,
   vertexModelId,
   withVertexFetch,
+  withoutStrictTools,
 } from "./index.ts";
 
 const TARGET = { project: "proj", region: "us-east5" };
@@ -753,5 +759,226 @@ describe("extension registration", () => {
       "[pi-anthropic-vertex] disabled: set GOOGLE_CLOUD_PROJECT or ANTHROPIC_VERTEX_PROJECT_ID",
     );
     assert.equal(registered.length, 0);
+  });
+});
+
+// --- Strict tools refused by organization policy ---------------------------------------------
+//
+// The refusal body below has the shape Vertex returns (a one-element array); the project in it is
+// the test project.
+
+const POLICY_REFUSAL = JSON.stringify([
+  {
+    error: {
+      code: 400,
+      message:
+        `Organization Policy constraint ${PARTNER_FEATURE_POLICY_CONSTRAINT} violated for \`projects/proj\` ` +
+        `attempting to use a disallowed feature ${STRUCTURED_OUTPUTS_FEATURE} for Partner model claude-sonnet-4-6. ` +
+        "Please contact your organization administrator.",
+      status: "FAILED_PRECONDITION",
+    },
+  },
+]);
+
+function refusal(): Response {
+  return new Response(POLICY_REFUSAL, { status: 400, headers: { "content-type": "application/json" } });
+}
+
+const STRICT_BODY = {
+  model: "claude-sonnet-4-6",
+  stream: true,
+  messages: [{ role: "user", content: "hi" }],
+  tools: [
+    { name: "read", description: "Read a file", strict: true, input_schema: { type: "object", properties: {} } },
+    { name: "grep", description: "Search", input_schema: { type: "object", properties: {} } },
+  ],
+};
+
+const MESSAGES_URL = `${buildBaseUrl(TARGET.region)}/v1/messages`;
+
+function scripted(responses: Array<() => Response>): { bodies: Array<Record<string, unknown>>; fetch: FetchFunction } {
+  const bodies: Array<Record<string, unknown>> = [];
+  const fetch: FetchFunction = async (input, init) => {
+    const text = await new Request(input, init).text();
+    bodies.push(text ? JSON.parse(text) : {});
+    const next = responses[bodies.length - 1];
+    assert.ok(next, `unexpected request #${bodies.length}`);
+    return next();
+  };
+  return { bodies, fetch };
+}
+
+function strictFlags(body: Record<string, unknown>): unknown[] {
+  return (body.tools as Array<Record<string, unknown>>).map((tool) => tool.strict);
+}
+
+describe("isStructuredOutputsPolicyRefusal", () => {
+  it("recognises the organization-policy refusal of structured outputs", () => {
+    assert.equal(isStructuredOutputsPolicyRefusal(400, POLICY_REFUSAL), true);
+  });
+
+  it("does not match a refusal of another feature that mentions structured_outputs elsewhere", () => {
+    const other = POLICY_REFUSAL.replace(
+      `disallowed feature ${STRUCTURED_OUTPUTS_FEATURE}`,
+      `disallowed feature web_search (${STRUCTURED_OUTPUTS_FEATURE} is allowed)`,
+    );
+    assert.equal(isStructuredOutputsPolicyRefusal(400, other), false);
+  });
+
+  it("ignores other 400s, other features and other statuses", () => {
+    assert.equal(isStructuredOutputsPolicyRefusal(400, '{"error":{"message":"fallbacks: Extra inputs are not permitted"}}'), false);
+    assert.equal(isStructuredOutputsPolicyRefusal(400, POLICY_REFUSAL.replace(STRUCTURED_OUTPUTS_FEATURE, "web_search")), false);
+    assert.equal(isStructuredOutputsPolicyRefusal(403, POLICY_REFUSAL), false);
+  });
+});
+
+describe("withoutStrictTools", () => {
+  it("drops strict from every tool and leaves everything else as it was", () => {
+    const stripped = withoutStrictTools(JSON.stringify(STRICT_BODY));
+    assert.ok(stripped);
+    const parsed = JSON.parse(stripped);
+    assert.deepEqual(strictFlags(parsed), [undefined, undefined]);
+    assert.deepEqual(parsed.tools[0].input_schema, STRICT_BODY.tools[0].input_schema);
+    assert.deepEqual(parsed.messages, STRICT_BODY.messages);
+    assert.equal(parsed.model, STRICT_BODY.model);
+  });
+
+  it("returns undefined when no tool is strict, so there is nothing to retry without", () => {
+    assert.equal(withoutStrictTools(JSON.stringify({ ...STRICT_BODY, tools: [STRICT_BODY.tools[1]] })), undefined);
+    assert.equal(withoutStrictTools(JSON.stringify({ model: "m", messages: [] })), undefined);
+    assert.equal(withoutStrictTools("not json"), undefined);
+  });
+});
+
+describe("createVertexFetch strict-tools fallback", () => {
+  const request = (): [string, RequestInit] => [
+    MESSAGES_URL,
+    { method: "POST", headers: { "x-api-key": "tok" }, body: JSON.stringify(STRICT_BODY) },
+  ];
+
+  it("resends once without strict when Vertex refuses it by policy, and reports the model", async () => {
+    const { bodies, fetch } = scripted([refusal, sseResponse]);
+    const reported: string[] = [];
+    const vertexFetch = createVertexFetch({ ...TARGET, baseFetch: fetch, onStrictToolsRefused: (m) => reported.push(m) });
+    const response = await vertexFetch(...request());
+    assert.equal(response.status, 200);
+    assert.equal(bodies.length, 2);
+    assert.deepEqual(strictFlags(bodies[0]), [true, undefined]);
+    assert.deepEqual(strictFlags(bodies[1]), [undefined, undefined]);
+    assert.deepEqual(reported, ["claude-sonnet-4-6"]);
+  });
+
+  it("remembers the model, so later requests skip the refused round trip", async () => {
+    const { bodies, fetch } = scripted([refusal, sseResponse, sseResponse]);
+    const refused = new Set<string>();
+    const reported: string[] = [];
+    const options = { ...TARGET, baseFetch: fetch, strictToolsRefused: refused, onStrictToolsRefused: (m: string) => reported.push(m) };
+    await createVertexFetch(options)(...request());
+    await createVertexFetch(options)(...request());
+    assert.equal(bodies.length, 3);
+    assert.deepEqual(strictFlags(bodies[2]), [undefined, undefined]);
+    assert.deepEqual([...refused], ["claude-sonnet-4-6"]);
+    assert.deepEqual(reported, ["claude-sonnet-4-6"], "reported once, not per request");
+  });
+
+  it("reports a model once when concurrent turns are all refused", async () => {
+    const { bodies, fetch } = scripted([refusal, refusal, sseResponse, sseResponse]);
+    const refused = new Set<string>();
+    const reported: string[] = [];
+    const options = { ...TARGET, baseFetch: fetch, strictToolsRefused: refused, onStrictToolsRefused: (m: string) => reported.push(m) };
+    const responses = await Promise.all([createVertexFetch(options)(...request()), createVertexFetch(options)(...request())]);
+    assert.deepEqual(responses.map((response) => response.status), [200, 200]);
+    assert.equal(bodies.length, 4);
+    assert.deepEqual(reported, ["claude-sonnet-4-6"]);
+  });
+
+  it("keeps strict tools for a model the policy allows", async () => {
+    const { bodies, fetch } = scripted([sseResponse]);
+    const refused = new Set(["claude-sonnet-4-6"]);
+    const haiku = { ...STRICT_BODY, model: "claude-haiku-4-5-20251001" };
+    await createVertexFetch({ ...TARGET, baseFetch: fetch, strictToolsRefused: refused })(MESSAGES_URL, {
+      method: "POST",
+      body: JSON.stringify(haiku),
+    });
+    assert.deepEqual(strictFlags(bodies[0]), [true, undefined]);
+  });
+
+  it("returns any other 400 untouched, with its body still readable", async () => {
+    const other = () => new Response('{"error":{"message":"fallbacks: Extra inputs are not permitted"}}', { status: 400 });
+    const { bodies, fetch } = scripted([other]);
+    const refused = new Set<string>();
+    const response = await createVertexFetch({ ...TARGET, baseFetch: fetch, strictToolsRefused: refused })(...request());
+    assert.equal(response.status, 400);
+    assert.match(await response.text(), /fallbacks/);
+    assert.equal(bodies.length, 1);
+    assert.equal(refused.size, 0);
+  });
+
+  it("does not retry a policy refusal when no tool was strict", async () => {
+    const { bodies, fetch } = scripted([refusal]);
+    const plain = { ...STRICT_BODY, tools: [STRICT_BODY.tools[1]] };
+    const response = await createVertexFetch({ ...TARGET, baseFetch: fetch, onStrictToolsRefused: () => {} })(
+      MESSAGES_URL,
+      { method: "POST", body: JSON.stringify(plain) },
+    );
+    assert.equal(response.status, 400);
+    assert.equal(bodies.length, 1);
+  });
+});
+
+describe("strict-tools fallback end to end through pi's Anthropic transport", () => {
+  // A tool that asks for JSON-schema constrained sampling, the way pi's built-in tools do from
+  // pi 0.86.0. On a model whose compat has supportsStrictTools, pi sends it with `strict: true`.
+  const context: Context = {
+    ...CONTEXT,
+    tools: [
+      {
+        name: "read",
+        description: "Read a file",
+        parameters: Type.Object({ path: Type.String() }),
+        constrainedSampling: { type: "json_schema", strict: "prefer" },
+      },
+    ],
+  };
+
+  // pi 0.87 reads tools from a leading system message (`normalizeContext`) rather than from
+  // `Context.tools`; earlier releases have no such function and read `Context.tools` directly.
+  const { normalizeContext } = piAi as { normalizeContext?: (context: Context) => Context };
+  const transcript = normalizeContext ? normalizeContext(context) : context;
+
+  it("completes the turn after a policy refusal, and pi sent strict tools first", async () => {
+    const { bodies, fetch } = scripted([refusal, sseResponse]);
+    const { provider, model } = vertexProvider();
+    const warn = console.warn;
+    const warnings: unknown[] = [];
+    console.warn = (...args: unknown[]) => void warnings.push(args.join(" "));
+    try {
+      const message = await provider.streamSimple(model("claude-sonnet-4-6"), transcript, { apiKey: "tok", fetch }).result();
+      assert.equal(message.stopReason, "stop", `stream failed: ${message.errorMessage ?? "no reason given"}`);
+    } finally {
+      console.warn = warn;
+    }
+    assert.equal(bodies.length, 2);
+    assert.deepEqual(strictFlags(bodies[0]), [true], "pi is expected to send strict for this tool and model");
+    assert.deepEqual(strictFlags(bodies[1]), [undefined]);
+    assert.equal(warnings.length, 1);
+    assert.match(String(warnings[0]), /claude-sonnet-4-6.*structured_outputs/);
+  });
+
+  it("remembers the refusal across turns of the same registered provider", async () => {
+    const { bodies, fetch } = scripted([refusal, sseResponse, sseResponse]);
+    const { provider, model } = vertexProvider();
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      for (let turn = 0; turn < 2; turn++) {
+        const message = await provider.streamSimple(model("claude-sonnet-4-6"), transcript, { apiKey: "tok", fetch }).result();
+        assert.equal(message.stopReason, "stop", `turn ${turn} failed: ${message.errorMessage ?? "no reason given"}`);
+      }
+    } finally {
+      console.warn = warn;
+    }
+    assert.equal(bodies.length, 3, "the second turn skips the refused round trip");
+    assert.deepEqual(strictFlags(bodies[2]), [undefined]);
   });
 });

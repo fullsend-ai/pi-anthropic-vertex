@@ -182,6 +182,14 @@ Use the fully qualified `anthropic-vertex/<model>`.
 project in that region. Try another region (`CLOUD_ML_REGION=us-east5`, `europe-west1`, `global`) or
 enable the model in Model Garden. The catalog comes from pi and cannot know your project's grants.
 
+**`[anthropic-vertex] <model>: Vertex refused strict tool use (structured_outputs) by organization policy ...`.**
+A Google Cloud organization policy (`constraints/vertexai.allowedPartnerModelFeatures`) disallows
+structured outputs for that model, and pi sent tools with `"strict": true` — its built-in `read`,
+`bash`, `edit` and `write` tools do from pi 0.86.0. The extension retries the request without
+`strict` and keeps sending that model's tools without it until pi exits; the warning prints once per
+model. If the retry fails too, pi reports that error as usual. Models the policy allows keep strict tools. To get strict tool use
+back, ask the organization's administrator to allow `structured_outputs` for the model.
+
 **A 400 naming a request field** — `fallbacks: Extra inputs are not permitted`, or an unrecognised
 beta. pi has started sending a field Vertex does not accept. Anthropic capability flags reach Vertex
 through an explicit allowlist (`VERTEX_COMPAT_KEYS` in `src/index.ts`) precisely so this stays rare;

@@ -37,7 +37,8 @@ because it depends on `google-auth-library`.
 ```
 
 `src/index.ts` keeps all logic in pure exports — `resolveProject`, `resolveRegion`, `buildBaseUrl`,
-`vertexModelId`, `rewriteVertexRequest`, `toVertexModel`, `withVertexFetch`,
+`vertexModelId`, `rewriteVertexRequest`, `isStructuredOutputsPolicyRefusal`, `withoutStrictTools`,
+`createVertexFetch`, `toVertexModel`, `withVertexFetch`,
 `anthropicVertexProviderConfig` — with a thin `default` that registers them. The suite therefore
 runs with no pi process, no network, and no GCP credentials.
 
