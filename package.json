@@ -1,6 +1,6 @@
 {
   "name": "@fullsend-ai/pi-anthropic-vertex",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Anthropic Claude models on Google Cloud Vertex AI for pi",
   "type": "module",
   "main": "src/index.ts",
