@@ -15,13 +15,12 @@ npm ci          # installs pi as a peer; tsc and the tests need its types
 npm run ci      # lint + test — must pass before any commit
 ```
 
-Then the same against the other supported pi version, because that is what CI does and 0.84.4 is
-what production runs:
+`npm ci` installs the lockfile's pi. CI runs against each pi version in its matrix (0.87.1, which
+is what production runs); check that version explicitly before pushing:
 
 ```bash
-npm install --no-save --ignore-scripts @earendil-works/pi-ai@0.84.4 @earendil-works/pi-coding-agent@0.84.4
+npm install --no-save --ignore-scripts @earendil-works/pi-ai@0.87.1 @earendil-works/pi-coding-agent@0.87.1
 npm run ci
-npm install --no-save --ignore-scripts @earendil-works/pi-ai@0.85.0 @earendil-works/pi-coding-agent@0.85.0
 ```
 
 ## Rules
@@ -63,7 +62,7 @@ npm install --no-save --ignore-scripts @earendil-works/pi-ai@0.85.0 @earendil-wo
 
 ## Before you commit
 
-- `npm run ci` passes on both pi versions, plus `pi -ne -e . --list-models`.
+- `npm run ci` passes on every pi version in the CI matrix, plus `pi -ne -e . --list-models`.
 - Changes to the rewrite, the endpoint or auth also need one real call against Vertex.
 - Verify claims about Vertex, Anthropic or pi against the `.d.ts`, a live call, or vendor docs.
 - Commit format `{feat,fix,docs}: <message>`, no emojis, and `Signed-off-by: <name> <email>`.

@@ -57,13 +57,14 @@ anthropic-vertex  claude-opus-4-6             1M       128K     yes       yes
 anthropic-vertex  claude-opus-4-7             1M       128K     yes       yes
 anthropic-vertex  claude-opus-4-8             1M       128K     yes       yes
 anthropic-vertex  claude-opus-5               1M       128K     yes       yes
+anthropic-vertex  claude-opus-5-5             1M       128K     yes       yes
 anthropic-vertex  claude-sonnet-4-5           1M       64K      yes       yes
 anthropic-vertex  claude-sonnet-4-5-20250929  1M       64K      yes       yes
 anthropic-vertex  claude-sonnet-4-6           1M       128K     yes       yes
 anthropic-vertex  claude-sonnet-5             1M       128K     yes       yes
 ```
 
-(That listing is pi 0.85.0's catalog; yours reflects whatever pi you are running — see
+(That listing is pi 0.87.1's catalog; yours reflects whatever pi you are running — see
 [Models](#models).)
 
 ## 4. Run it
@@ -153,7 +154,7 @@ differs between them, not the identity.
 
 ## Requirements
 
-- pi ≥ 0.84.4 (tested against 0.84.4 and 0.85.0 on every commit)
+- pi ≥ 0.87.1 (tested against 0.87.1 on every commit)
 - A GCP project with the Claude models enabled in Vertex AI Model Garden
 - ADC credentials (`gcloud auth application-default login`, or `GOOGLE_APPLICATION_CREDENTIALS`)
 
