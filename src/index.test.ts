@@ -1,7 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import * as piAi from "@earendil-works/pi-ai";
-import { Type, calculateCost, createProvider } from "@earendil-works/pi-ai";
+import { Type, calculateCost, createProvider, normalizeContext } from "@earendil-works/pi-ai";
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/compat";
 import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 import type { Context, FetchFunction, Model, Provider, Usage } from "@earendil-works/pi-ai";
@@ -371,6 +370,16 @@ describe("toVertexModel", () => {
     }
   });
 
+  it("drops the mid-conversation system-message and tool-change flags pi 0.87 added", () => {
+    for (const model of mapped) {
+      for (const key of ["supportsMidConvoSystemMessages", "supportsMidConvoToolChanges", "sessionAffinityFormat"]) {
+        assert.equal(key in (model.compat ?? {}), false, `${model.id} forwards ${key}`);
+      }
+    }
+    const source = getBuiltinModels("anthropic").find((model) => model.compat?.supportsMidConvoToolChanges === true);
+    assert.ok(source, "pi's catalog is expected to enable mid-conversation tool changes on some model");
+  });
+
   it("keeps the flags that only change how pi shapes a request it already sends", () => {
     const opus46 = mapped.find((model) => model.id === "claude-opus-4-6");
     assert.ok(opus46, "claude-opus-4-6 is expected in pi's catalog on both supported versions");
@@ -607,7 +616,9 @@ function vertexProvider() {
   return { provider, model };
 }
 
-const CONTEXT: Context = { messages: [{ role: "user", content: "hi", timestamp: 0 }] };
+const USER_TURN: Context = { messages: [{ role: "user", content: "hi", timestamp: 0 }] };
+/** pi 0.87 providers take a transcript: the prompt and tools folded into a leading system message. */
+const CONTEXT = normalizeContext(USER_TURN);
 
 describe("end to end through pi's Anthropic transport", () => {
   it("rewrites the request pi actually builds and parses the response pi expects", async () => {
@@ -930,7 +941,7 @@ describe("strict-tools fallback end to end through pi's Anthropic transport", ()
   // A tool that asks for JSON-schema constrained sampling, the way pi's built-in tools do from
   // pi 0.86.0. On a model whose compat has supportsStrictTools, pi sends it with `strict: true`.
   const context: Context = {
-    ...CONTEXT,
+    ...USER_TURN,
     tools: [
       {
         name: "read",
@@ -941,10 +952,7 @@ describe("strict-tools fallback end to end through pi's Anthropic transport", ()
     ],
   };
 
-  // pi 0.87 reads tools from a leading system message (`normalizeContext`) rather than from
-  // `Context.tools`; earlier releases have no such function and read `Context.tools` directly.
-  const { normalizeContext } = piAi as { normalizeContext?: (context: Context) => Context };
-  const transcript = normalizeContext ? normalizeContext(context) : context;
+  const transcript = normalizeContext(context);
 
   it("completes the turn after a policy refusal, and pi sent strict tools first", async () => {
     const { bodies, fetch } = scripted([refusal, sseResponse]);

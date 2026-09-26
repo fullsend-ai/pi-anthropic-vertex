@@ -82,16 +82,17 @@ That is exactly what `@anthropic-ai/vertex-sdk` does on the request path
 
 ### The two pi request shapes
 
-The wrapper has to cope with both supported pi versions, which build the request differently:
+pi has built the request two ways. The CI matrix now covers only 0.87.1, which uses the 0.85.0
+shape, but the rewrite still accepts both, so the table stays as the reason for each step:
 
-| | pi 0.84.4 (fullsend's sandbox pin) | pi 0.85.0 |
+| | pi 0.84.x | pi 0.85.0 and later (0.87.1 included) |
 |---|---|---|
 | Call | `client.messages.create({ ...params, stream: true })` | `client.beta.messages.create(params)` |
 | Path | `/v1/messages` | `/v1/messages?beta=true` |
 | Betas | already flattened into the `anthropic-beta` header by `createClient` | `params.betas`, which the SDK lifts into the same header and strips from the body |
 
 Both arrive at the wrapper as a POST whose path ends in `/v1/messages` and whose body is a JSON
-string, so one rewrite covers both. The only 0.85.0-specific step is dropping the `beta` query
+string, so one rewrite covers both. The only step the newer shape needs is dropping the `beta` query
 parameter. `src/index.test.ts` drives pi's real `streamSimple` against a mocked transport, so both
 shapes are checked for real rather than described.
 
@@ -128,14 +129,21 @@ Currently excluded, with the reason next to each key in the source:
   `thinking-binding-controls-2026-08-01` betas plus `output_config` / `block_binding` fields.
   Unverified on Vertex, and the key does not exist at all in pi 0.84.4.
 - `sendSessionAffinityHeaders` — a Fireworks cache-routing header, meaningless here.
+- `sessionAffinityFormat` — picks the name of that header (pi 0.87), meaningless here.
+- `supportsMidConvoSystemMessages` — pi 0.87 sends later system messages as system-role messages
+  inside `messages`. Unverified on Vertex.
+- `supportsMidConvoToolChanges` — pi 0.87 sends the `mid-conversation-tool-changes-2026-07-01` beta,
+  `tool_addition` / `tool_removal` blocks and `defer_loading` tools. Unverified on Vertex.
+
+`supportsToolReferences` was forwarded until pi 0.87 removed it from the compat type.
 
 Turning one of these on is a real change: verify it with a live call against Vertex, in the same
 commit as the test that covers it.
 
 ## The CI matrix replaces a compat file
 
-`.github/workflows/ci.yml` runs the whole suite against **each** supported pi version
-(`0.84.4`, `0.85.0`) by installing that version over the lockfile's peers:
+`.github/workflows/ci.yml` runs the whole suite against **each** supported pi version (currently
+`0.87.1`) by installing that version over the lockfile's peers:
 
 ```bash
 npm install --no-save --ignore-scripts @earendil-works/pi-ai@$V @earendil-works/pi-coding-agent@$V
@@ -149,7 +157,7 @@ surface the tests already call, and the matrix says which versions currently pas
 
 When pi releases: add the new version, run it, and drop the old one when fullsend moves its sandbox
 pin (`images/sandbox/Containerfile`, `ARG PI_VERSION`). Run the same two commands locally before
-pushing — the second is easy to forget, and 0.84.4 is what production runs.
+pushing, for each version in the matrix.
 
 ## Gotchas
 
@@ -235,7 +243,7 @@ catalog that has moved.
 
 ## Before you commit
 
-- `npm run ci` passes on **both** matrix versions (see above), and
+- `npm run ci` passes on **every** matrix version (see above), and
   `pi -ne -e . --list-models` still lists the provider.
 - Changes to the rewrite, the endpoint or auth also need one real call against a project with Claude
   enabled — the suite deliberately does not cover the network.

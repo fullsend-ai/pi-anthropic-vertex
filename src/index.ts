@@ -186,6 +186,15 @@ export function vertexModelId(id: string): string {
  *     `thinking-binding-controls-2026-08-01` betas plus `output_config` / `block_binding` fields.
  *     Unverified on Vertex, and the key does not exist at all in pi 0.84.4.
  *   - `sendSessionAffinityHeaders` — a Fireworks cache-routing header; meaningless here.
+ *   - `sessionAffinityFormat` — picks the name of that same header (pi 0.87); meaningless here.
+ *   - `supportsMidConvoSystemMessages` — pi 0.87 sends later system messages as system-role messages
+ *     inside `messages` instead of folding them into the top-level system prompt. Unverified on
+ *     Vertex.
+ *   - `supportsMidConvoToolChanges` — pi 0.87 sends the `mid-conversation-tool-changes-2026-07-01`
+ *     beta, `tool_addition` / `tool_removal` blocks and `defer_loading` tools. Unverified on Vertex,
+ *     and it requires `supportsMidConvoSystemMessages`.
+ *
+ * `supportsToolReferences` was forwarded until pi 0.87 removed it from the compat type.
  */
 export const VERTEX_COMPAT_KEYS = [
   "forceAdaptiveThinking",
@@ -195,19 +204,17 @@ export const VERTEX_COMPAT_KEYS = [
   "supportsLongCacheRetention",
   "supportsCacheControlOnTools",
   "allowEmptySignature",
-  "supportsToolReferences",
 ] as const satisfies readonly (keyof AnthropicMessagesCompat)[];
 
-/**
- * The compat keys deliberately NOT forwarded (reasons above). Not constrained to
- * `keyof AnthropicMessagesCompat` on purpose: `supportsMidConvoEffort` does not exist in pi 0.84.4,
- * and the CI matrix compiles against both 0.84.4 and 0.85.0.
- */
+/** The compat keys deliberately NOT forwarded (reasons above). */
 export const VERTEX_COMPAT_DROPPED = [
-  "allowedFallbackModels",
-  "supportsMidConvoEffort",
-  "sendSessionAffinityHeaders",
-] as const;
+  "allowedFallbackModels", // becomes a `fallbacks` field; Vertex answers 400
+  "supportsMidConvoEffort", // mid-conversation-output-config betas; unverified on Vertex
+  "sendSessionAffinityHeaders", // Fireworks cache-routing header; meaningless on Vertex
+  "sessionAffinityFormat", // names that same header; meaningless on Vertex
+  "supportsMidConvoSystemMessages", // system-role messages inside `messages`; unverified on Vertex
+  "supportsMidConvoToolChanges", // tool_addition/tool_removal blocks and their beta; unverified on Vertex
+] as const satisfies readonly (keyof AnthropicMessagesCompat)[];
 
 /**
  * Exhaustiveness witness. `satisfies (keyof T)[]` only checks that every listed key exists — it
