@@ -365,6 +365,81 @@ export function rewriteVertexRequest(
   return { url: url.toString(), method, headers, body: JSON.stringify(body) };
 }
 
+// ## Strict tools refused by organization policy
+//
+// pi sends `"strict": true` on a tool definition when the tool asks for JSON-schema constrained
+// sampling and the model's compat has `supportsStrictTools` (pi-ai `convertTools`). From pi 0.86.0
+// the built-in `read`, `bash`, `edit` and `write` tools always ask, with `strict: "prefer"`, so
+// nearly every agent turn carries strict tools. Vertex counts strict tool use as the
+// `structured_outputs` partner-model feature, and a Google Cloud organization policy
+// (`constraints/vertexai.allowedPartnerModelFeatures`) can disallow it per model. The refusal is a
+// 400 before any output streams, naming the constraint and the feature.
+//
+// `strict: "prefer"` means pi itself would send the tool without `strict` on a model that lacks
+// support, so the fetch below does the same thing one step later: on that exact refusal it drops
+// `strict` from every tool and resends once, then keeps dropping it for that model for as long as
+// the provider is loaded (in pi, the rest of the process). Models the policy allows keep strict tools, and nothing changes once the policy
+// does. A tool declared with `strict: "require"` cannot be told apart on the wire; pi's built-in
+// tools never use it.
+
+/** The organization-policy constraint Vertex names when it refuses a partner-model feature. */
+export const PARTNER_FEATURE_POLICY_CONSTRAINT = "constraints/vertexai.allowedPartnerModelFeatures";
+
+/** The partner-model feature that strict tool use counts as. */
+export const STRUCTURED_OUTPUTS_FEATURE = "structured_outputs";
+
+/**
+ * True when a Vertex response body is the organization-policy refusal of strict tool use: a 400
+ * naming the constraint and, as the disallowed feature itself, `structured_outputs`. A refusal of
+ * another feature that merely mentions `structured_outputs` elsewhere does not match.
+ */
+export function isStructuredOutputsPolicyRefusal(status: number, body: string): boolean {
+  return (
+    status === 400 &&
+    body.includes(PARTNER_FEATURE_POLICY_CONSTRAINT) &&
+    new RegExp(`disallowed feature ${STRUCTURED_OUTPUTS_FEATURE}\\b`).test(body)
+  );
+}
+
+/**
+ * The request body with `strict` removed from every tool, or `undefined` when no tool carried
+ * `strict: true` — in which case a refusal cannot be about tools and resending would not help.
+ */
+export function withoutStrictTools(body: string): string | undefined {
+  let payload: unknown;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return undefined;
+  const { tools } = payload as { tools?: unknown };
+  if (!Array.isArray(tools)) return undefined;
+  let stripped = false;
+  const nextTools = tools.map((tool: unknown) => {
+    if (typeof tool !== "object" || tool === null || (tool as { strict?: unknown }).strict !== true) return tool;
+    stripped = true;
+    const { strict: _strict, ...rest } = tool as Record<string, unknown>;
+    return rest;
+  });
+  return stripped ? JSON.stringify({ ...payload, tools: nextTools }) : undefined;
+}
+
+/** The Vertex model segment of a rewritten Messages URL (`claude-sonnet-4-6`, `claude-haiku-4-5@20251001`). */
+function vertexModelFromUrl(url: string): string | undefined {
+  return /\/publishers\/anthropic\/models\/([^/:]+):/.exec(new URL(url).pathname)?.[1];
+}
+
+/** Models whose strict tools were refused, shared by every fetch one provider builds. */
+export type StrictToolsRefusals = Set<string>;
+
+function warnStrictToolsRefused(model: string): void {
+  console.warn(
+    `[${PROVIDER_ID}] ${model}: Vertex refused strict tool use (${STRUCTURED_OUTPUTS_FEATURE}) by organization policy ` +
+      `${PARTNER_FEATURE_POLICY_CONSTRAINT}; retrying without strict, and sending this model's tools without strict from now on.`,
+  );
+}
+
 /**
  * A `fetch` that applies {@link rewriteVertexRequest} and then delegates.
  *
@@ -377,12 +452,22 @@ export function rewriteVertexRequest(
  * serialised string body, while direct callers (and tests) pass plain records. The original `init`
  * is spread back into the outgoing call so transport-level options the rewrite has no opinion
  * about — `duplex`, an undici `dispatcher`, `keepalive` — survive.
+ *
+ * `strictToolsRefused` remembers models whose strict tools Vertex refused by policy (see "Strict
+ * tools refused by organization policy" above); pass one set per provider so the fallback costs
+ * one extra round trip per model, not one per request.
  */
 export function createVertexFetch({
   project,
   region,
   baseFetch,
-}: VertexTarget & { baseFetch?: FetchFunction }): FetchFunction {
+  strictToolsRefused = new Set(),
+  onStrictToolsRefused = warnStrictToolsRefused,
+}: VertexTarget & {
+  baseFetch?: FetchFunction;
+  strictToolsRefused?: StrictToolsRefusals;
+  onStrictToolsRefused?: (model: string) => void;
+}): FetchFunction {
   return async (input, init) => {
     const transport = baseFetch ?? globalThis.fetch;
     const request = new Request(input, init);
@@ -398,13 +483,32 @@ export function createVertexFetch({
       },
       { project, region },
     );
-    return transport(rewritten.url, {
-      ...init,
-      method: rewritten.method,
-      headers: rewritten.headers,
-      signal: request.signal,
-      ...(rewritten.body === undefined ? {} : { body: rewritten.body }),
-    });
+    const send = (body: string | undefined) =>
+      transport(rewritten.url, {
+        ...init,
+        method: rewritten.method,
+        headers: rewritten.headers,
+        signal: request.signal,
+        ...(body === undefined ? {} : { body }),
+      });
+
+    const model = needsBody ? vertexModelFromUrl(rewritten.url) : undefined;
+    if (model === undefined || rewritten.body === undefined) return send(rewritten.body);
+    if (strictToolsRefused.has(model)) return send(withoutStrictTools(rewritten.body) ?? rewritten.body);
+
+    const response = await send(rewritten.body);
+    if (response.status !== 400) return response;
+    const fallback = withoutStrictTools(rewritten.body);
+    if (fallback === undefined) return response;
+    // Read a copy, so the caller still gets an unread body when this is some other 400.
+    if (!isStructuredOutputsPolicyRefusal(response.status, await response.clone().text())) return response;
+    // Turns already in flight for this model can each hit the refusal before any of them records
+    // it; each still resends, but only the first reports.
+    if (!strictToolsRefused.has(model)) {
+      strictToolsRefused.add(model);
+      onStrictToolsRefused(model);
+    }
+    return send(fallback);
   };
 }
 
@@ -420,17 +524,18 @@ export function createVertexFetch({
  * `cancelDeferred`) that a future pi release may add.
  */
 export function withVertexFetch(base: ProviderStreams, target: VertexTarget): ProviderStreams {
+  const strictToolsRefused: StrictToolsRefusals = new Set();
   return {
     ...base,
     stream: (model, context, options) =>
       base.stream(model, context, {
         ...options,
-        fetch: createVertexFetch({ ...target, baseFetch: options?.fetch }),
+        fetch: createVertexFetch({ ...target, baseFetch: options?.fetch, strictToolsRefused }),
       }),
     streamSimple: (model, context, options) =>
       base.streamSimple(model, context, {
         ...options,
-        fetch: createVertexFetch({ ...target, baseFetch: options?.fetch }),
+        fetch: createVertexFetch({ ...target, baseFetch: options?.fetch, strictToolsRefused }),
       }),
   };
 }
