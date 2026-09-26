@@ -246,11 +246,14 @@ catalog that has moved.
 
 ## Releasing
 
-Tag and push; `.github/workflows/release.yml` does the rest.
+Set `version` in `package.json` in a PR (refresh the lockfile as above), merge it, then tag that
+merge commit with the same version and push the tag; `.github/workflows/release.yml` does the rest.
 
 ```bash
-git tag -a v0.1.0 -m "v0.1.0"
-git push origin v0.1.0
+git switch main && git pull
+VERSION="v$(node -p 'require("./package.json").version')"
+git tag -a "$VERSION" -m "$VERSION"
+git push origin "$VERSION"
 ```
 
 It re-runs lint and tests (never cut a release from a tree that does not pass), computes the SHA256
