@@ -82,8 +82,8 @@ That is exactly what `@anthropic-ai/vertex-sdk` does on the request path
 
 ### The two pi request shapes
 
-pi has built the request two ways. The CI matrix now covers only 0.87.1, which uses the 0.85.0
-shape, but the rewrite still accepts both, so the table stays as the reason for each step:
+pi has built the request two ways. The CI matrix now covers 1.3.0 and 1.5.0, both of which use the
+0.85.0 shape, but the rewrite still accepts both, so the table stays as the reason for each step:
 
 | | pi 0.84.x | pi 0.85.0 and later (0.87.1 included) |
 |---|---|---|
@@ -143,7 +143,7 @@ commit as the test that covers it.
 ## The CI matrix replaces a compat file
 
 `.github/workflows/ci.yml` runs the whole suite against **each** supported pi version (currently
-`0.87.1`) by installing that version over the lockfile's peers:
+`1.3.0` and `1.5.0`) by installing that version over the lockfile's peers:
 
 ```bash
 npm install --no-save --ignore-scripts @earendil-works/pi-ai@$V @earendil-works/pi-coding-agent@$V

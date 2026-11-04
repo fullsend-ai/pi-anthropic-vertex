@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { Type, calculateCost, createProvider, normalizeContext } from "@earendil-works/pi-ai";
+import { calculateCost, createProvider, normalizeContext } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/compat";
 import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 import type { Context, FetchFunction, Model, Provider, Usage } from "@earendil-works/pi-ai";

@@ -154,7 +154,7 @@ differs between them, not the identity.
 
 ## Requirements
 
-- pi ≥ 0.87.1 (tested against 0.87.1 on every commit)
+- pi ≥ 1.3.0 (tested against 1.3.0 and 1.5.0 on every commit)
 - A GCP project with the Claude models enabled in Vertex AI Model Garden
 - ADC credentials (`gcloud auth application-default login`, or `GOOGLE_APPLICATION_CREDENTIALS`)
 

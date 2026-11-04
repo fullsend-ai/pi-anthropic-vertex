@@ -15,11 +15,13 @@ npm ci          # installs pi as a peer; tsc and the tests need its types
 npm run ci      # lint + test — must pass before any commit
 ```
 
-`npm ci` installs the lockfile's pi. CI runs against each pi version in its matrix (0.87.1, which
-is what production runs); check that version explicitly before pushing:
+`npm ci` installs the lockfile's pi. CI runs against each pi version in its matrix (1.3.0, fullsend's
+sandbox pin, and 1.5.0, the latest release); check each version explicitly before pushing:
 
 ```bash
-npm install --no-save --ignore-scripts @earendil-works/pi-ai@0.87.1 @earendil-works/pi-coding-agent@0.87.1
+npm install --no-save --ignore-scripts @earendil-works/pi-ai@1.3.0 @earendil-works/pi-coding-agent@1.3.0
+npm run ci
+npm install --no-save --ignore-scripts @earendil-works/pi-ai@1.5.0 @earendil-works/pi-coding-agent@1.5.0
 npm run ci
 ```
 
