@@ -23,11 +23,10 @@
     "ci": "npm run lint && npm run test"
   },
   "dependencies": {
-    "google-auth-library": "9.15.1"
+    "google-auth-library": "11.3.3"
   },
   "devDependencies": {
     "@types/node": "^26.3.0",
-    "typebox": "1.3.27",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
