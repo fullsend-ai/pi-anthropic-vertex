@@ -1,7 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { calculateCost, createProvider, normalizeContext } from "@earendil-works/pi-ai";
-import { Type } from "typebox";
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/compat";
 import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 import type { Context, FetchFunction, Model, Provider, Usage } from "@earendil-works/pi-ai";
@@ -947,7 +946,7 @@ describe("strict-tools fallback end to end through pi's Anthropic transport", ()
       {
         name: "read",
         description: "Read a file",
-        parameters: Type.Object({ path: Type.String() }),
+        parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
         constrainedSampling: { type: "json_schema", strict: "prefer" },
       },
     ],
