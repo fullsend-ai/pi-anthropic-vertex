@@ -6,20 +6,19 @@ tracker:
         allowed_targets:
             orgs:
                 - fullsend-ai
-runtime: pi
+runtime: claude
 agents:
     - name: code
       runtime: claude
-      model: sonnet
+      model: opus
     - name: fix
-      runtime: claude
       model: sonnet
     - name: prioritize
       runtime: pi
-      model: google-vertex/gemini-3.7-flash
+      model: google-vertex/gemini-3.8-flash
     - name: review
       runtime: pi
-      model: xai-vertex/xai/grok-4.6
+      model: sonnet
       subagents:
         challenger: opus
         correctness: gateway/gpt-6.1-sol
@@ -29,11 +28,10 @@ agents:
         security: gateway/gpt-6.1-sol
         style-conventions: google-vertex/gemini-3.8-flash
     - name: retro
-      enabled: true
-      runtime: claude
+      enabled: false
       model: sonnet
     - name: triage
-      model: xai-vertex/xai/grok-4.6
+      model: sonnet
 status_notifications:
     reaction:
         start: enabled
@@ -47,6 +45,3 @@ inference:
         models:
             gpt-6.1-sol:
                 api: openai-responses
-models:
-    aliases:
-        sonnet: claude-sonnet-5
