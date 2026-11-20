@@ -193,6 +193,8 @@ export function vertexModelId(id: string): string {
  *   - `supportsMidConvoToolChanges` — pi 0.87 sends the `mid-conversation-tool-changes-2026-07-01`
  *     beta, `tool_addition` / `tool_removal` blocks and `defer_loading` tools. Unverified on Vertex,
  *     and it requires `supportsMidConvoSystemMessages`.
+ *   - `supportsMessageThreads` — pi 1.6.0 sends the `message-threads-2026-08-12` beta and a thread
+ *     session id. Unverified on Vertex.
  *
  * `supportsToolReferences` was forwarded until pi 0.87 removed it from the compat type.
  */
@@ -206,6 +208,13 @@ export const VERTEX_COMPAT_KEYS = [
   "allowEmptySignature",
 ] as const satisfies readonly (keyof AnthropicMessagesCompat)[];
 
+/**
+ * Compat keys that newer pi declares but the oldest pi in the CI matrix does not. Listing one in
+ * VERTEX_COMPAT_DROPPED must still compile against the older `AnthropicMessagesCompat`, so these are
+ * named here; drop each one once the peer floor reaches the pi that added it.
+ */
+type VertexCompatKeyFromNewerPi = "supportsMessageThreads"; // pi 1.6.0
+
 /** The compat keys deliberately NOT forwarded (reasons above). */
 export const VERTEX_COMPAT_DROPPED = [
   "allowedFallbackModels", // becomes a `fallbacks` field; Vertex answers 400
@@ -214,7 +223,8 @@ export const VERTEX_COMPAT_DROPPED = [
   "sessionAffinityFormat", // names that same header; meaningless on Vertex
   "supportsMidConvoSystemMessages", // system-role messages inside `messages`; unverified on Vertex
   "supportsMidConvoToolChanges", // tool_addition/tool_removal blocks and their beta; unverified on Vertex
-] as const satisfies readonly (keyof AnthropicMessagesCompat)[];
+  "supportsMessageThreads", // message-threads beta and thread session id; unverified on Vertex
+] as const satisfies readonly (keyof AnthropicMessagesCompat | VertexCompatKeyFromNewerPi)[];
 
 /**
  * Exhaustiveness witness. `satisfies (keyof T)[]` only checks that every listed key exists — it

@@ -380,6 +380,16 @@ describe("toVertexModel", () => {
     assert.ok(source, "pi's catalog is expected to enable mid-conversation tool changes on some model");
   });
 
+  it("drops supportsMessageThreads, the message-threads beta pi 1.6.0 added", () => {
+    // pi's catalog never sets this key, so the checks over `mapped` above cannot catch a regression.
+    const source = catalog.find((model) => model.id === "claude-opus-5");
+    assert.ok(source, "claude-opus-5 is expected in pi's catalog on every supported version");
+    const threaded = { ...source, compat: { ...source.compat, supportsMessageThreads: true } };
+    const vertex = toVertexModel(threaded, "us-east5");
+    assert.equal("supportsMessageThreads" in (vertex.compat ?? {}), false);
+    assert.equal(vertex.compat?.forceAdaptiveThinking, true, "allowlisted keys must still be forwarded");
+  });
+
   it("keeps the flags that only change how pi shapes a request it already sends", () => {
     const opus46 = mapped.find((model) => model.id === "claude-opus-4-6");
     assert.ok(opus46, "claude-opus-4-6 is expected in pi's catalog on both supported versions");
